@@ -82,6 +82,7 @@ Please use the provided `QTable` as given in this assignment. You should not
 need to modify `environment.py` or `qtable.py`.
 """
 
+from turtle import done
 from typing import Tuple
 
 import matplotlib.pyplot as plt
@@ -119,20 +120,20 @@ SWEEP_RUNS = 10                     # Default `num_runs` in Experiments 1 and 2 
 SWEEP_EVAL_GAMES = 500              # Evaluation games used to score each tested setting in Experiments 1 and 2
 
 # Experiment 2 settings: epsilon sweep
-EPSILON_SWEEP_HISTORY_LENGTH = 1    # Placeholder history length for Experiment 2; update after Experiment 1
-EPSILON_VALUES = (0.0, 0.1)         # Starting epsilon values for Experiment 2; expand in the interval [0,1)
+EPSILON_SWEEP_HISTORY_LENGTH = 2    # Placeholder history length for Experiment 2; update after Experiment 1
+EPSILON_VALUES = (0.0, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7)         # Starting epsilon values for Experiment 2; expand in the interval [0,1)
 
 # Experiment 3 settings: learning curves
-CURVE_HISTORY_LENGTH = 1            # Placeholder history length for Experiment 3; update after Experiment 1
-CURVE_EPSILON = 0.0                 # Placeholder epsilon for Experiment 3; update after Experiment 2
+CURVE_HISTORY_LENGTH = 2           # Placeholder history length for Experiment 3; update after Experiment 1
+CURVE_EPSILON = 0.2                # Placeholder epsilon for Experiment 3; update after Experiment 2
 CURVE_NUM_EPISODES = 10_000         # Training episodes in each learning-curve run
 CURVE_RUNS = 10                     # Default `num_runs` in Experiment 3 for quick testing
-CURVE_EVAL_INTERVAL = 500           # Training episodes between two points on the learning curve
+CURVE_EVAL_INTERVAL = 250           # Training episodes between two points on the learning curve
 CURVE_EVAL_GAMES = 200              # Evaluation games averaged into each point on the learning curve
 
 # Example-call settings
-REPORT_SWEEP_RUNS = 10              # Suggested `num_runs` in the final Experiment 1 and 2 calls; you may want this higher than `SWEEP_RUNS` for steadier reported results
-REPORT_CURVE_RUNS = 10              # Suggested `num_runs` in the final Experiment 3 call; you may want this higher than `CURVE_RUNS` for a smoother final figure
+REPORT_SWEEP_RUNS = 50             # Suggested `num_runs` in the final Experiment 1 and 2 calls; you may want this higher than `SWEEP_RUNS` for steadier reported results
+REPORT_CURVE_RUNS = 50              # Suggested `num_runs` in the final Experiment 3 call; you may want this higher than `CURVE_RUNS` for a smoother final figure
 
 # Baseline settings
 BASELINE_EVAL_GAMES = 2_000      # Evaluation games used to estimate the random baseline shown in plots/tables
@@ -181,8 +182,20 @@ class QLearningAgent:
         # STUDENT TASK: implement epsilon-greedy action selection.
         # This is a placeholder implementation that always selects a random action.
         # --------------------------------------------------------------------
-        placeholder_action = int(np.random.randint(self.env.num_codes))
-        return placeholder_action
+        
+        #If the random number is less than epsilon, 
+        # we explore by selecting a random action. 
+        # Otherwise, we exploit by selecting the best action according to our Q-table.
+
+        if explore and np.random.random() < self.epsilon:
+        # Explore: pick a uniformly random action
+            return int(np.random.randint(self.env.num_codes))
+        else:
+        # Exploit: pick the greedy best action
+            return self.Q.get_best_action(state)
+
+        # placeholder_action = int(np.random.randint(self.env.num_codes))
+        # return placeholder_action
 
     def update(
         self,
@@ -203,7 +216,23 @@ class QLearningAgent:
         # --------------------------------------------------------------------
         # STUDENT TASK: implement the Q-learning update
         # --------------------------------------------------------------------
-        pass
+        
+        current_q = self.Q.get(state, action)
+
+        #  For terminal states, the future has no value, so the target is just the reward
+        if done:
+            target = reward
+        
+        # For non-terminal states, we add a discounted estimate of the best possible future reward
+        else:
+            target = reward + self.gamma * self.Q.get_max_value(next_state)
+        
+        # the updated value. The learning rate (eta) controls how far we move
+        new_q = current_q + self.eta * (target - current_q)
+        
+        # stores the new value in the Q-table
+        self.Q.set(state, action, new_q)
+
 
     def train_episode(self) -> Tuple[float, bool, int]:
         """Train for one episode. Returns (total_reward, won, num_turns)."""
@@ -500,6 +529,7 @@ def experiment_history_length(
         }
 
     baseline_wr, baseline_turns = compute_random_baseline()
+    print(f"\nRandom baseline: {baseline_wr:.1%} win rate, Avg Turns = {baseline_turns:.2f}")
     print_summary_table("History Length Summary", "history", results)
 
     x = np.array(history_lengths, dtype=float)
@@ -513,6 +543,59 @@ def experiment_history_length(
     # Use `x`, `win_means`, `win_stds`, `turn_means`, `turn_stds`,
     # `baseline_wr`, and `baseline_turns`.
     # --------------------------------------------------------------------
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+
+    #  Left panel: Win Rate
+    ax1.plot(x, win_means * 100, "o-", label="Q-learning", color="steelblue")
+    ax1.fill_between(
+        x,
+        (win_means - win_stds) * 100,
+        (win_means + win_stds) * 100,
+        alpha=0.2,
+        color="steelblue",
+    )
+    ax1.axhline(
+        y=baseline_wr * 100,
+        color="red",
+        linestyle="--",
+        label=f"Random baseline ({baseline_wr:.1%})",
+    )
+    ax1.set_xlabel("History Length")
+    ax1.set_ylabel("Win Rate (%)")
+    ax1.set_title("Win Rate vs History Length")
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+
+    # Right panel: Average Turns 
+    ax2.plot(x, turn_means, "o-", label="Q-learning", color="steelblue")
+    ax2.fill_between(
+        x,
+        turn_means - turn_stds,
+        turn_means + turn_stds,
+        alpha=0.2,
+        color="steelblue",
+    )
+    ax2.axhline(
+        y=baseline_turns,
+        color="red",
+        linestyle="--",
+        label=f"Random baseline ({baseline_turns:.2f})",
+    )
+    ax2.set_xlabel("History Length")
+    ax2.set_ylabel("Avg Turns (failed game = max_turns + 1)")
+    ax2.set_title("Average Turns vs History Length")
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+
+    fig.suptitle(
+        f"History Length Sweep  |  ε={epsilon:.2f}, {num_episodes} episodes, {num_runs} runs",
+        fontsize=11,
+    )
+    fig.tight_layout()
+    fig.savefig("experiment1_history_length.png", dpi=150)
+    plt.show()
+
 
     return results
 
@@ -580,6 +663,9 @@ def experiment_epsilon(
         }
 
     baseline_wr, baseline_turns = compute_random_baseline()
+    print(f"\nRandom baseline: {baseline_wr:.1%} win rate, Avg Turns = {baseline_turns:.2f}")
+
+
     print_summary_table("Epsilon Summary", "epsilon", results)
 
     x = np.array(epsilon_values, dtype=float)
@@ -593,6 +679,59 @@ def experiment_epsilon(
     # Use `x`, `win_means`, `win_stds`, `turn_means`, `turn_stds`,
     # `baseline_wr`, and `baseline_turns`.
     # --------------------------------------------------------------------
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
+
+    # Left panel: Win Rate
+    ax1.plot(x, win_means * 100, "o-", color="steelblue",
+            linewidth=2, markersize=6, label="Q-learning (mean)")
+    ax1.fill_between(
+        x,
+        (win_means - win_stds) * 100,
+        (win_means + win_stds) * 100,
+        alpha=0.2, color="steelblue", label="±1 std"
+    )
+    ax1.axhline(
+        y=baseline_wr * 100,
+        color="red", linestyle="--", linewidth=1.5,
+        label=f"Random baseline ({baseline_wr:.1%})"
+    )
+    ax1.set_xlabel("Epsilon (ε)", fontsize=12)
+    ax1.set_ylabel("Win Rate (%)", fontsize=12)
+    ax1.set_title("Win Rate vs Exploration Rate", fontsize=13)
+    ax1.set_xticks(x)
+    ax1.set_ylim(0, 105)
+    ax1.legend(fontsize=10)
+    ax1.grid(True, alpha=0.3)
+
+    # Right panel: Average Turns
+    ax2.plot(x, turn_means, "o-", color="steelblue",
+            linewidth=2, markersize=6, label="Q-learning (mean)")
+    ax2.fill_between(
+        x,
+        turn_means - turn_stds,
+        turn_means + turn_stds,
+        alpha=0.2, color="steelblue", label="±1 std"
+    )
+    ax2.axhline(
+        y=baseline_turns,
+        color="red", linestyle="--", linewidth=1.5,
+        label=f"Random baseline ({baseline_turns:.2f})"
+    )
+    ax2.set_xlabel("Epsilon (ε)", fontsize=12)
+    ax2.set_ylabel("Avg Turns (failed = max_turns + 1)", fontsize=12)
+    ax2.set_title("Average Turns vs Exploration Rate", fontsize=13)
+    ax2.set_xticks(x)
+    ax2.legend(fontsize=10)
+    ax2.grid(True, alpha=0.3)
+
+    fig.suptitle(
+        f"Epsilon Sweep  |  history_length={history_length}, "
+        f"{num_episodes} episodes, {num_runs} runs, {eval_games} eval games",
+        fontsize=11
+    )
+    fig.tight_layout()
+    fig.savefig("experiment2_epsilon.png", dpi=150)
+    plt.show()
 
     return results
 
@@ -670,13 +809,78 @@ def experiment_learning_curves(
     turns_std = np.std(avg_turns_array, axis=0)
 
     baseline_wr, baseline_turns = compute_random_baseline()
+    print(f"\nRandom baseline: {baseline_wr:.1%} win rate, Avg Turns = {baseline_turns:.2f}")
 
     # --------------------------------------------------------------------
     # STUDENT TASK: create your learning-curve plot here.
     # Use `episodes`, `win_rate_mean`, `win_rate_std`, `turns_mean`,
     # `turns_std`, `baseline_wr`, and `baseline_turns`.
     # --------------------------------------------------------------------
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
 
+    # Left panel: Win Rate over Training 
+    ax1.plot(
+        episodes, win_rate_mean * 100,
+        color="steelblue", linewidth=2, label="Q-learning (mean)"
+    )
+    ax1.fill_between(
+        episodes,
+        (win_rate_mean - win_rate_std) * 100,
+        (win_rate_mean + win_rate_std) * 100,
+        alpha=0.25, color="steelblue", label="±1 std"
+    )
+    ax1.axhline(
+        y=baseline_wr * 100,
+        color="red", linestyle="--", linewidth=1.5,
+        label=f"Random baseline ({baseline_wr:.1%})"
+    )
+    ax1.set_xlabel("Training Episodes", fontsize=12)
+    ax1.set_ylabel("Win Rate (%)", fontsize=12)
+    ax1.set_title("Win Rate During Training", fontsize=13)
+    ax1.set_ylim(0, 105)
+    ax1.legend(fontsize=10)
+    ax1.grid(True, alpha=0.3)
+
+    # Right panel: Average Turns over Training
+    ax2.plot(
+        episodes, turns_mean,
+        color="steelblue", linewidth=2, label="Q-learning (mean)"
+    )
+    ax2.fill_between(
+        episodes,
+        turns_mean - turns_std,
+        turns_mean + turns_std,
+        alpha=0.25, color="steelblue", label="±1 std"
+    )
+    ax2.axhline(
+        y=baseline_turns,
+        color="red", linestyle="--", linewidth=1.5,
+        label=f"Random baseline ({baseline_turns:.2f})"
+    )
+    ax2.set_xlabel("Training Episodes", fontsize=12)
+    ax2.set_ylabel("Avg Turns (failed = max_turns + 1)", fontsize=12)
+    ax2.set_title("Average Turns During Training", fontsize=13)
+    ax2.legend(fontsize=10)
+    ax2.grid(True, alpha=0.3)
+
+    fig.suptitle(
+        f"Learning Curves  |  history_length={history_length}, "
+        f"ε={epsilon}, {num_runs} runs, eval every {eval_interval} episodes",
+        fontsize=11
+    )
+    fig.tight_layout()
+    fig.savefig("experiment3_learning_curves.png", dpi=150)
+    plt.show()
+
+    # Print a summary of key checkpoints
+    print("\nLearning curve checkpoints (mean ± std):")
+    print(f"{'Episodes':<12} {'Win Rate':<22} {'Avg Turns'}")
+    print("-" * 56)
+    for ep, wr, wr_s, t, t_s in zip(
+        episodes, win_rate_mean, win_rate_std, turns_mean, turns_std
+    ):
+        print(f"{ep:<12} {wr*100:>5.1f}% ± {wr_s*100:<5.1f}%   "
+            f"{t:>5.2f} ± {t_s:.2f}")
 
 # ============================================================================
 # ANALYSIS QUESTIONS (Answer in your report)
@@ -790,25 +994,25 @@ if __name__ == "__main__":
     # quick tests, so the separate `REPORT_*` values below can be set higher
     # for steadier final figures. Add your own plotting code in the marked
     # STUDENT TASK sections above.
-    # history_results = experiment_history_length(
-    #     history_lengths=HISTORY_LENGTHS,       # <-- update this to test a different range
-    #     epsilon=HISTORY_SWEEP_EPSILON,         # <-- keep this fixed during Experiment 1
-    #     eval_games=SWEEP_EVAL_GAMES,
-    #     num_runs=REPORT_SWEEP_RUNS,
-    #     num_episodes=SWEEP_NUM_EPISODES,
-    # )
-    # epsilon_results = experiment_epsilon(
-    #     history_length=EPSILON_SWEEP_HISTORY_LENGTH,  # <-- update this based on your Experiment 1 results
-    #     epsilon_values=EPSILON_VALUES,                # <-- expand this range for your actual study
-    #     eval_games=SWEEP_EVAL_GAMES,
-    #     num_runs=REPORT_SWEEP_RUNS,
-    #     num_episodes=SWEEP_NUM_EPISODES,
-    # )
-    # experiment_learning_curves(
-    #     history_length=CURVE_HISTORY_LENGTH,  # <-- update this based on your Experiment 1 results
-    #     epsilon=CURVE_EPSILON,                # <-- update this based on your Experiment 2 results
-    #     eval_games=CURVE_EVAL_GAMES,
-    #     eval_interval=CURVE_EVAL_INTERVAL,
-    #     num_runs=REPORT_CURVE_RUNS,
-    #     num_episodes=CURVE_NUM_EPISODES,
-    # )
+    history_results = experiment_history_length(
+        history_lengths=(1,2,3,4,5,6),       # <-- update this to test a different range
+        epsilon=HISTORY_SWEEP_EPSILON,         # <-- keep this fixed during Experiment 1
+        eval_games=SWEEP_EVAL_GAMES,
+        num_runs=REPORT_SWEEP_RUNS,
+        num_episodes=SWEEP_NUM_EPISODES,
+    )
+    epsilon_results = experiment_epsilon(
+        history_length=EPSILON_SWEEP_HISTORY_LENGTH,  # <-- update this based on your Experiment 1 results
+        epsilon_values=EPSILON_VALUES,                # <-- expand this range for your actual study
+        eval_games=SWEEP_EVAL_GAMES,
+        num_runs=REPORT_SWEEP_RUNS,
+        num_episodes=SWEEP_NUM_EPISODES,
+    )
+    experiment_learning_curves(
+        history_length=CURVE_HISTORY_LENGTH,  # <-- update this based on your Experiment 1 results
+        epsilon=CURVE_EPSILON,                # <-- update this based on your Experiment 2 results
+        eval_games=CURVE_EVAL_GAMES,
+        eval_interval=CURVE_EVAL_INTERVAL,
+        num_runs=REPORT_CURVE_RUNS,
+        num_episodes=CURVE_NUM_EPISODES,
+    )
